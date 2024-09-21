@@ -1,20 +1,22 @@
 #!/usr/bin/env python3
 
+"""
+Runs the player game stats brownlow models.
+"""
+
 
 import pandas as pd
-import os
 import numpy as np
-import matplotlib.pyplot as plt
-import pandas as pd
 import torch.nn as nn
 import torch
 import torch.optim as optim
-from torch.nn.modules.loss import MSELoss
 import glob
 
 
 class ColNames:
-    """Dataframe column names"""
+    """
+    Dataframe column names
+    """
 
     INDEX = "index"
     PLAYER = "player"
@@ -27,7 +29,11 @@ class ColNames:
 
 
 def read_data(data_glob: str) -> pd.DataFrame:
-    """Reads in list of parquet files and concatenates them into a single dataframe"""
+    """
+    Reads in list of parquet files and concatenates them into a single dataframe
+    :param data_glob: glob pattern for the data files
+    :return: dataframe containing the
+    """
     files = glob.glob(data_glob)
     years = [f.split("_")[-1].split(".")[0] for f in files]
     data = []
@@ -43,7 +49,11 @@ def read_data(data_glob: str) -> pd.DataFrame:
 
 
 def clean_data(df: pd.DataFrame) -> pd.DataFrame:
-    """Cleans the dataframe"""
+    """
+    Cleans the dataframe
+    :param df: dataframe to clean
+    :return: cleaned dataframe
+    """
     df = df.loc[(df[ColNames.VALUE] != "Off") & (df[ColNames.VALUE] != "On")]
 
     NaN_key = {"NA": np.NaN}
@@ -69,51 +79,32 @@ def clean_data(df: pd.DataFrame) -> pd.DataFrame:
 
 def train_test_split(
     df: pd.DataFrame, data_start: int, test_year: int, last_round: int = 23
-) -> (pd.DataFrame, pd.DataFrame):
-    """Split the data into train and test sets"""
-    df_test = df[(df["round"] < 23) & (df["year"] == test_year)]
+) -> tuple[pd.DataFrame, pd.DataFrame]:
+    """
+    Split the data into train and test sets
+
+    :param df: dataframe to split
+    :param data_start: year to start training data
+    :param test_year: year to test data
+    :param last_round: last round to include in the training data
+    :return: tuple of train and test dataframes
+    """
+    df_test = df[(df["round"] < last_round) & (df["year"] == test_year)]
     df_train = df[
-        (df["round"] < 23) & (df["year"] >= data_start) & (df["year"] < test_year)
+        (df["round"] < last_round)
+        & (df["year"] >= data_start)
+        & (df["year"] < test_year)
     ]
-
-    # Get the labels for each stat
-    xlabels = [
-        "team",
-        "opponents",
-        "%_played",
-        "behinds",
-        "bounces",
-        "clangers",
-        "clearances",
-        "contested_marks",
-        "contested_possessions",
-        "disposals",
-        "frees",
-        "frees_against",
-        "goal_assists",
-        "goals",
-        "handballs",
-        "hit_outs",
-        "inside_50s",
-        "kicks",
-        "marks",
-        "marks_inside_50",
-        "one_percenters",
-        "rebounds",
-        "tackles",
-        "uncontested_possessions",
-    ]
-
-    y_labels = "brownlow_votes"
 
     X_train = df_train.drop(
         columns=["player", "team", "opponents", "round", "year", "brownlow_votes"]
     )
     Y_train = df_train["brownlow_votes"]
 
-    X_train, Y_train = torch.tensor(
-        X_train.to_numpy(), dtype=torch.float
-    ), torch.tensor(Y_train.to_numpy(), dtype=torch.float)
+    X_train, Y_train = (
+        torch.tensor(X_train.to_numpy(), dtype=torch.float),
+        torch.tensor(Y_train.to_numpy(), dtype=torch.float),
+    )
 
     return X_train, Y_train
 
@@ -138,6 +129,7 @@ def train(
     loss_function=nn.MSELoss(),
     epoch_num=100,
     batch_size=100,
+    betas=(0.9, 0.999),
     lr=0.0001,
 ):
     loss = []
@@ -148,14 +140,12 @@ def train(
 
     batch = torch.utils.data.DataLoader(data_tuple, batch_size=batch_size, shuffle=True)
 
-    optimizer = optim.Adam(network.parameters(), lr=lr, betas=(0.9, 0.999))
+    optimizer = optim.Adam(network.parameters(), lr=lr, betas=betas)
 
     for epoch in range(epoch_num):
         if not epoch % 10:
             print("Iteration: ", epoch, "Completion: ", (epoch) / epoch_num)
-
         running_loss = 0
-
         for batch_shuffle in batch:
             x, y = batch_shuffle
             y = y.unsqueeze(1)
@@ -163,9 +153,7 @@ def train(
             loss = loss_function(network(x), y)
             loss.backward()
             optimizer.step()
-
             running_loss += loss.item()
-
         loss.append(running_loss / batch_size)
 
     return network, loss
@@ -175,7 +163,6 @@ def main():
     data = clean_data(
         read_data("brownlow/data/afl_table_data/AFL-Player-Tables_game_stats*.parquet")
     )
-
     print(data.head())
 
 
