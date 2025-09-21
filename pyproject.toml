@@ -14,6 +14,9 @@ scikit-learn = "^1.5.2"
 torch = "^2.4.1"
 
 
+[tool.poetry.group.dev.dependencies]
+ipykernel = "^6.30.1"
+
 [build-system]
 requires = ["poetry-core"]
 build-backend = "poetry.core.masonry.api"
